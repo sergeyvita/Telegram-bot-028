@@ -4,6 +4,7 @@ from aiohttp import web
 from dotenv import load_dotenv
 import openai
 import aiohttp
+from pydub import AudioSegment
 
 # Загрузка переменных окружения из .env файла
 load_dotenv()
@@ -13,14 +14,6 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 
-# Логи для отладки переменных окружения
-print(f"TELEGRAM_BOT_TOKEN: {TELEGRAM_BOT_TOKEN}")
-print(f"OPENAI_API_KEY: {OPENAI_API_KEY}")
-print(f"WEBHOOK_URL: {WEBHOOK_URL}")
-
-if not TELEGRAM_BOT_TOKEN or not OPENAI_API_KEY or not WEBHOOK_URL:
-    raise ValueError("Не удалось загрузить обязательные переменные окружения. Проверьте .env файл или настройки Render.")
-
 # Установка API-ключа OpenAI
 openai.api_key = OPENAI_API_KEY
 
@@ -28,13 +21,6 @@ openai.api_key = OPENAI_API_KEY
 PROMPT = (
     "Этот GPT выступает в роли профессионального создателя контента для Телеграм-канала Ассоциации застройщиков. "
     "Он создает максимально продающие посты на темы недвижимости, строительства, законодательства, инвестиций и связанных отраслей. "
-    "Контент ориентирован на привлечение внимания, удержание аудитории и стимулирование действий (например, обращения за консультацией или покупки). "
-    "GPT учитывает деловой, но не формальный тон и стремится быть доступным, информативным и вовлекающим. "
-    "Посты красиво оформляются с использованием эмодзи в стиле \"энергичный и современный\", добавляя динамичности и вовлеченности. "
-    "Например: 🌇 для темы строительства, 🌟 для выделения преимуществ, 📲 для призывов к действию. "
-    "Все посты содержат четкие призывы к действию и информацию о контактах. "
-    "В конце каждого поста указывается номер телефона Ассоциации застройщиков: 8-800-550-23-93 и название компании \"Ассоциация застройщиков\", "
-    "которое также является гиперссылкой, ведущей на Телеграм-канал https://t.me/associationdevelopers."
 )
 
 # Создание приложения Aiohttp
@@ -46,37 +32,35 @@ async def handle_home(request):
 async def handle_webhook(request):
     try:
         data = await request.json()
-        print(f"Получены данные от Telegram: {data}")  # Отладочный лог
+        print(f"Получены данные от Telegram: {data}")
 
         if "message" in data:
             chat_id = data["message"]["chat"]["id"]
-            user_message = data["message"].get("text", "")
-            print(f"Chat ID: {chat_id}, Message: {user_message}")
 
-            if user_message.lower() in ["привет", "здравствуйте", "начать"]:
-                welcome_message = (
-                    "Привет, я НЕАЛЕКСЕЙ! Я ОТЛИЧНЫЙ КОНТЕНТ МЕНЕДЖЕР. "
-                    "Я создам для тебя уникальные посты в Телеграм, только напиши или скажи мне информацию, которую тебе необходимо переработать для поста."
-                )
-                await send_message(chat_id, welcome_message)
-                return web.json_response({"status": "ok"})
-
-            # Генерация ответа через OpenAI
-            response = await openai.ChatCompletion.acreate(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": PROMPT},
-                    {"role": "user", "content": user_message},
-                ],
-                temperature=1,
-                max_tokens=1500,
-            )
-
-            reply = response['choices'][0]['message']['content']
-            await send_message(chat_id, reply)
+            # Проверка на текстовое сообщение
+            if "text" in data["message"]:
+                user_message = data["message"]["text"]
+                await send_typing_action(chat_id)  # Отправка статуса "печатает"
+                if user_message.lower() in ["привет", "здравствуйте", "начать"]:
+                    welcome_message = (
+                        "Привет! Отправь текстовое сообщение или голосовое, чтобы я помог создать уникальный контент."
+                    )
+                    await send_message(chat_id, welcome_message)
+                else:
+                    response = await generate_openai_response(user_message)
+                    await send_message(chat_id, response)
+            
+            # Проверка на голосовое сообщение
+            elif "voice" in data["message"]:
+                file_id = data["message"]["voice"]["file_id"]
+                file_path = await get_telegram_file_path(file_id)
+                ogg_file_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
+                text_from_audio = await transcribe_audio(ogg_file_url)
+                await send_typing_action(chat_id)  # Отправка статуса "печатает"
+                response = await generate_openai_response(text_from_audio)
+                await send_message(chat_id, response)
 
         return web.json_response({"status": "ok"})
-
     except Exception as e:
         print(f"Ошибка обработки вебхука: {e}")
         return web.json_response({"error": str(e)}, status=500)
@@ -85,13 +69,74 @@ async def send_message(chat_id, text):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {"chat_id": chat_id, "text": text}
-
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload) as response:
                 result = await response.json()
                 print(f"Ответ Telegram API: {result}")
     except Exception as e:
         print(f"Ошибка при отправке сообщения: {e}")
+
+async def send_typing_action(chat_id):
+    """Отправка статуса 'печатает'."""
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendChatAction"
+        payload = {"chat_id": chat_id, "action": "typing"}
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload) as response:
+                print(f"Отправлен статус 'печатает': {response.status}")
+    except Exception as e:
+        print(f"Ошибка при отправке статуса 'печатает': {e}")
+
+async def get_telegram_file_path(file_id):
+    """Получение пути файла по file_id."""
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile"
+        payload = {"file_id": file_id}
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=payload) as response:
+                result = await response.json()
+                return result["result"]["file_path"]
+    except Exception as e:
+        print(f"Ошибка получения пути файла: {e}")
+        return None
+
+async def transcribe_audio(ogg_url):
+    """Транскрипция голосового сообщения."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(ogg_url) as response:
+                ogg_data = await response.read()
+
+        # Конвертация OGG в WAV
+        with open("audio.ogg", "wb") as ogg_file:
+            ogg_file.write(ogg_data)
+        audio = AudioSegment.from_file("audio.ogg", format="ogg")
+        audio.export("audio.wav", format="wav")
+
+        # Отправка в OpenAI для транскрипции
+        with open("audio.wav", "rb") as audio_file:
+            transcript = openai.Audio.transcribe("whisper-1", audio_file)
+        return transcript["text"]
+    except Exception as e:
+        print(f"Ошибка при транскрипции: {e}")
+        return "Не удалось обработать голосовое сообщение."
+
+async def generate_openai_response(user_message):
+    """Генерация ответа через OpenAI."""
+    try:
+        response = await openai.ChatCompletion.acreate(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": PROMPT},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=1,
+            max_tokens=1500,
+        )
+        return response['choices'][0]['message']['content']
+    except Exception as e:
+        print(f"Ошибка при обращении к OpenAI: {e}")
+        return "Произошла ошибка при генерации ответа."
 
 # Роуты приложения
 app.router.add_get('/', handle_home)
