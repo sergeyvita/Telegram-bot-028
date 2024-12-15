@@ -14,7 +14,7 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 
-# Установка API-ключа OpenAI
+# Установка API-ключа OpenAI :)
 openai.api_key = OPENAI_API_KEY
 
 # PROMT для OpenAI
