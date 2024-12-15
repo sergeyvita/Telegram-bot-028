@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: telegram-bot
+    env: python
+    region: us
+    buildCommand: ""
+    startCommand: python main.py
+    envVars:
+      - key: OPENAI_API_KEY
+        value: "ВАШ_API_KEY"
+      - key: TELEGRAM_BOT_TOKEN
+        value: "ВАШ_TELEGRAM_TOKEN"
+      - key: WEBHOOK_URL
+        value: "https://ВАШЕ_ИМЯ_ПРИЛОЖЕНИЯ.onrender.com"
+      - key: PORT
+        value: "10000"
