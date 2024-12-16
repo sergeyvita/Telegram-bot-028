@@ -145,9 +145,15 @@ async def transcribe_audio(ogg_url):
 async def extract_text_from_image(image_url):
     """Извлечение текста с изображения."""
     try:
+        print(f"Попытка загрузить изображение с URL: {image_url}")
         async with aiohttp.ClientSession() as session:
             async with session.get(image_url) as response:
-                image_data = await response.read()
+                if response.status == 200:
+                    image_data = await response.read()
+                    print(f"Изображение загружено: размер {len(image_data)} байт")
+                else:
+                    print(f"Ошибка при загрузке изображения: HTTP {response.status}")
+                    return None
 
         image_path = "image.jpg"
         with open(image_path, "wb") as img_file:
@@ -155,11 +161,22 @@ async def extract_text_from_image(image_url):
 
         print(f"Изображение сохранено по пути: {image_path}")
 
+        # Открываем изображение и выводим информацию о нём
         image = Image.open(image_path)
-        text = pytesseract.image_to_string(image, lang='rus+eng')
+        print(f"Информация об изображении: формат={image.format}, размер={image.size}, цветовая палитра={image.mode}")
+
+        # Преобразование изображения (например, в черно-белое)
+        processed_image = image.convert("L")  # Преобразование в оттенки серого
+        processed_image.save("processed_image.jpg")  # Сохраняем для отладки
+        print("Изображение преобразовано в черно-белое и сохранено как 'processed_image.jpg'")
+
+        # Распознавание текста с использованием Tesseract
+        text = pytesseract.image_to_string(processed_image, lang='rus+eng')
         print(f"Распознанный текст: {text}")
 
-        os.remove(image_path)
+        os.remove(image_path)  # Удаляем оригинальное изображение
+        os.remove("processed_image.jpg")  # Удаляем обработанное изображение для экономии места
+
         return text.strip()
     except Exception as e:
         print(f"Ошибка обработки изображения: {e}")
