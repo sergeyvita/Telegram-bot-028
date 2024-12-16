@@ -5,7 +5,10 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     libtesseract-dev \
-    && apt-get clean
+    libleptonica-dev \
+    tesseract-ocr-eng \
+    tesseract-ocr-rus \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Устанавливаем рабочую директорию
 WORKDIR /app

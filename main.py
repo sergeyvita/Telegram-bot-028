@@ -19,9 +19,14 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 openai.api_key = OPENAI_API_KEY
 
+# Расширенное конфигурирование логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,  # Установите DEBUG для детального логирования
+    handlers=[
+        logging.StreamHandler(),  # Вывод в консоль
+        logging.FileHandler("bot_errors.log", mode='a', encoding='utf-8')  # Запись логов в файл
+    ]
 )
 
 PROMPT = (
@@ -104,11 +109,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logging.info(f"Голосовое сообщение сохранено по пути: {audio_path}")
 
     try:
-        # Конвертация в WAV
         audio = AudioSegment.from_ogg(audio_path)
         audio.export(wav_path, format="wav")
 
-        # Распознавание речи (опционально можно подключить Google Speech API или другую систему)
         transcript_response = openai.Audio.transcribe(
             model="whisper-1",
             file=open(wav_path, "rb")
@@ -143,7 +146,6 @@ if __name__ == '__main__':
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
-    # Установка вебхука
     logging.info("Установка вебхука")
     application.run_webhook(
         listen="0.0.0.0",
