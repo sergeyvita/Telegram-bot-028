@@ -1,23 +1,26 @@
-# Базовый образ Python
+# Используем официальный образ Python
 FROM python:3.11-slim
 
-# Установка системных зависимостей для Tesseract
+# Устанавливаем зависимости
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     libtesseract-dev \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
     && apt-get clean
 
-# Установка рабочей директории
+# Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Копирование всех файлов проекта в контейнер
-COPY . .
+# Копируем файлы проекта
+COPY . /app
 
-# Установка зависимостей Python
+# Устанавливаем зависимости Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Установка порта и запуск приложения
+# Устанавливаем переменную окружения для Tesseract
+ENV TESSERACT_CMD=/usr/bin/tesseract
+
+# Указываем порт, используемый приложением
+EXPOSE 8080
+
+# Запускаем бота
 CMD ["python", "main.py"]

@@ -1,6 +1,6 @@
 import os
 import logging
-from telegram import Update, ChatAction
+from telegram import Update, constants
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import openai
 import pytesseract
@@ -8,7 +8,7 @@ from PIL import Image
 from pydub import AudioSegment
 from dotenv import load_dotenv
 
-# Загрузка переменных окружения :))
+# Загрузка переменных окружения
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -45,7 +45,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat.id
 
     # Установить статус "печатает"
-    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+    await context.bot.send_chat_action(chat_id=chat_id, action=constants.ChatAction.TYPING)
 
     try:
         response = openai.ChatCompletion.create(
@@ -54,8 +54,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 {"role": "system", "content": PROMPT},
                 {"role": "user", "content": user_message}
             ],
-            max_tokens=500,
-            temperature=0.7
+            max_tokens=1500,
+            temperature=1
         )
         reply = response['choices'][0]['message']['content'].strip()
         await update.message.reply_text(reply)
@@ -76,7 +76,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logging.info(f"Распознанный текст: {extracted_text}")
 
             # Установить статус "печатает"
-            await context.bot.send_chat_action(chat_id=update.message.chat.id, action=ChatAction.TYPING)
+            await context.bot.send_chat_action(chat_id=update.message.chat.id, action=constants.ChatAction.TYPING)
 
             response = openai.ChatCompletion.create(
                 model="gpt-4",
@@ -118,7 +118,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.info(f"Распознанный текст из голосового сообщения: {transcript}")
 
         # Установить статус "печатает"
-        await context.bot.send_chat_action(chat_id=update.message.chat.id, action=ChatAction.TYPING)
+        await context.bot.send_chat_action(chat_id=update.message.chat.id, action=constants.ChatAction.TYPING)
 
         response = openai.ChatCompletion.create(
             model="gpt-4",
@@ -126,8 +126,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 {"role": "system", "content": PROMPT},
                 {"role": "user", "content": transcript}
             ],
-            max_tokens=500,
-            temperature=0.7
+            max_tokens=1500,
+            temperature=1
         )
         reply = response['choices'][0]['message']['content'].strip()
         await update.message.reply_text(reply)
