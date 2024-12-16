@@ -1,16 +1,17 @@
 services:
   - type: web
     name: telegram-bot
-    env: python
-    region: us
+    env: docker
+    dockerfilePath: Dockerfile
     buildCommand: ""
     startCommand: python main.py
     envVars:
       - key: OPENAI_API_KEY
-        value: "ВАШ_API_KEY"
+        value: ""
       - key: TELEGRAM_BOT_TOKEN
-        value: "ВАШ_TELEGRAM_TOKEN"
+        value: ""
       - key: WEBHOOK_URL
-        value: "https://ВАШЕ_ИМЯ_ПРИЛОЖЕНИЯ.onrender.com"
+        value: "https://telegram-bot-yxmt.onrender.com/webhook"
       - key: PORT
-        value: "10000"
+        value: "8080"
+
