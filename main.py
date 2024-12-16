@@ -137,15 +137,23 @@ async def send_message(chat_id, text):
     except Exception as e:
         print(f"Ошибка при отправке сообщения: {e}")
 
-async def send_typing_action(chat_id):
+async def send_typing_action_while_processing(chat_id, stop_event):
+    """
+    Отправляет статус "печатает" в чат, пока не будет установлен stop_event.
+    """
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendChatAction"
-        payload = {"chat_id": chat_id, "action": "typing"}
+        payload = {"chat_id": chat_id, "action": "typing"}  # Отправка статуса "печатает"
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload) as response:
-                print(f"Отправлен статус 'печатает': {response.status}")
+            while not stop_event.is_set():
+                async with session.post(url, json=payload) as response:
+                    if response.status == 200:
+                        print(f"Статус 'печатает' успешно отправлен.")
+                    else:
+                        print(f"Ошибка при отправке статуса 'печатает': {response.status}")
+                await asyncio.sleep(5)  # Отправка статуса каждые 5 секунд
     except Exception as e:
-        print(f"Ошибка при отправке статуса 'печатает': {e}")
+        print(f"Ошибка в send_typing_action_while_processing: {e}")
 
 async def generate_openai_response(user_message):
     try:
