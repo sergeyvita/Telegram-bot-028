@@ -8,7 +8,7 @@ from PIL import Image
 from pydub import AudioSegment
 from dotenv import load_dotenv
 
-# Загрузка переменных окружения
+# Загрузка переменных окружения :))
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
