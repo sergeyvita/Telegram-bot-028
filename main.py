@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import openai
 import aiohttp
 from pydub import AudioSegment
+from asyncio import Event
 
 # Загрузка переменных окружения из .env файла
 load_dotenv()
@@ -23,8 +24,9 @@ PROMPT = (
     "Он создает максимально продающие посты на темы недвижимости, строительства, законодательства, инвестиций и связанных отраслей. "
     "Контент ориентирован на привлечение внимания, удержание аудитории и стимулирование действий (например, обращения за консультацией или покупки). "
     "Посты красиво оформляются с использованием эмодзи в стиле \"энергичный и современный\", добавляя динамичности и вовлеченности. "
-    "Например: \ud83c\udf07 для темы природы, \u2601\ufe0f для погоды, \ud83c\udfe1 для недвижимости. "
+    "Например: \ud83c\udfe1 для темы недвижимости, \ud83d\ude80 для роста, \ud83d\udce2 для новостей. "
     "Все посты структурированные и содержат четкие призывы к действию, информацию о контактах и гиперссылки. "
+    "Если информации не хватает, GPT уточняет необходимые данные у отправителя. "
     "В конце каждого поста перед хэштегами указывается название компании \"Ассоциация застройщиков\", номер телефона 8-800-550-23-93. "
     "В конце хэштеги на тему поста."
 )
@@ -62,21 +64,26 @@ async def handle_webhook(request):
                 user_message = data["message"]["text"]
                 username = data["message"]["from"].get("username", "")
 
-                await send_typing_action(chat_id)
+                stop_event = Event()
+                typing_task = asyncio.create_task(send_typing_action_while_processing(chat_id, stop_event))
 
-                if username == "di_agent01":
-                    response = await generate_openai_response(user_message)
-                    response += "\nНаписать в WhatsApp: wa.me/79281497703"
-                elif username == "Alinalyusaya":
-                    response = await generate_openai_response(user_message)
-                    response += "\nНаписать в WhatsApp: wa.me/79281237003"
-                elif username == "ElenaZelenskaya1":
-                    response = await generate_openai_response(user_message)
-                    response += "\nНаписать в WhatsApp: wa.me/79384242393"
-                else:
-                    response = await generate_openai_response(user_message)
+                try:
+                    if username == "di_agent01":
+                        response = await generate_openai_response(user_message)
+                        response += "\nНаписать в WhatsApp: wa.me/79281497703"
+                    elif username == "Alinalyusaya":
+                        response = await generate_openai_response(user_message)
+                        response += "\nНаписать в WhatsApp: wa.me/79281237003"
+                    elif username == "ElenaZelenskaya1":
+                        response = await generate_openai_response(user_message)
+                        response += "\nНаписать в WhatsApp: wa.me/79384242393"
+                    else:
+                        response = await generate_openai_response(user_message)
 
-                await send_message(chat_id, response)
+                    await send_message(chat_id, response)
+                finally:
+                    stop_event.set()
+                    await typing_task
 
         return web.json_response({"status": "ok"})
     except Exception as e:
