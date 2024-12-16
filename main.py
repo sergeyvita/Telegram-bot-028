@@ -1,162 +1,191 @@
 import os
-import logging
-from telegram import Update, constants
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-import openai
-import pytesseract
-from PIL import Image
-from pydub import AudioSegment
+import asyncio
+from aiohttp import web
 from dotenv import load_dotenv
-import subprocess  # Для проверки версии Tesseract
+import openai
+import aiohttp
+from pydub import AudioSegment
+from PIL import Image
+import pytesseract
 
-# Загрузка переменных окружения
+# Загрузка переменных окружения из .env файла
 load_dotenv()
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-TESSERACT_CMD = os.getenv("TESSERACT_CMD")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+# Переменные окружения
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 
-pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
+# Установка API-ключа OpenAI
 openai.api_key = OPENAI_API_KEY
 
-# Расширенное конфигурирование логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,  # Установите DEBUG для детального логирования
-    handlers=[
-        logging.StreamHandler(),  # Вывод в консоль
-        logging.FileHandler("bot_errors.log", mode='a', encoding='utf-8')  # Запись логов в файл
-    ]
-)
-
-# Логирование версии Tesseract
-try:
-    tesseract_version = subprocess.run(["tesseract", "--version"], capture_output=True, text=True)
-    logging.info(f"Tesseract version: {tesseract_version.stdout.strip()}")
-except Exception as e:
-    logging.error(f"Ошибка получения версии Tesseract: {e}")
-
+# PROMT для OpenAI
 PROMPT = (
-    "Этот GPT выступает в роли профессионального создателя контента для Телеграм-канала Ассоциации застройщиков. "
-    "Он создает максимально продающие посты на темы недвижимости, строительства, законодательства, инвестиций, "
-    "производит расчеты по стоимости квартир. Если производится расчет стоимости квартир, каждая переменная по стоимости, "
-    "первоначальному взносу, процентной ставке, ежемесячному платежу прописываются каждая на отдельной строчке жирным шрифтом. "
-    "Контент ориентирован на привлечение внимания, удержание аудитории и стимулирование действий (например, обращения за консультацией или покупки). "
-    "GPT учитывает деловой, но не формальный тон и стремится быть доступным, информативным и вовлекающим. Посты красиво оформляются с использованием эмодзи "
-    "в стиле 'энергичный и современный', добавляя динамичности и вовлеченности. Например: 🌇 для темы строительства, ✨ для выделения преимуществ, "
-    "📲 для призывов к действию. Все посты структурированные и содержат четкие призывы к действию, информацию о контактах и гиперссылки. "
-    "Если по запросу необходимо показать расчеты по квартирам, то жирным выделяются комнатность квартиры, площадь и ежемесячный платеж по ипотечному кредиту. "
-    "В конце каждого поста перед хэштегами указывается название компании 'Ассоциация застройщиков', номер телефона 8-800-550-23-93."
+    "Ты создаешь продающие посты для Telegram, посвященные продаже квартир в новостройках города Краснодара и Краснодарского края от агентства недвижимости 'Ассоциация застройщиков'. "
+    "Каждый пост должен быть ярким, динамичным, структурированным, с акцентом на ключевые моменты. "
+    "Используй эмодзи для привлечения внимания, выделяй важное жирным шрифтом. "
+    "Если включаешь расчеты (например, стоимость квартиры, процентная ставка по ипотеке, ежемесячный платеж), выводи данные в формате, где каждая цифра находится на отдельной строке для удобства. "
+    "Если речь идет об ипотеке, квартирах в новостройках или жилых комплексах, в самом конце поста добавляй призыв связаться с Ассоциацией застройщиков по телефону 8-800-550-23-93. "
+    "Заканчивай посты тематическими хэштегами."
 )
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Я бот Ассоциации застройщиков. Задавайте свои вопросы, отправляйте голосовые сообщения или фото для обработки.")
+# Указываем путь к tesseract.exe, если используется Windows
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = update.message.text
-    chat_id = update.message.chat.id
+# Создание приложения Aiohttp
+app = web.Application()
 
-    # Установить статус "печатает"
-    await context.bot.send_chat_action(chat_id=chat_id, action=constants.ChatAction.TYPING)
+async def handle_home(request):
+    return web.Response(text="Сервис работает!")
 
+async def handle_webhook(request):
     try:
-        response = openai.ChatCompletion.create(
+        data = await request.json()
+        print(f"Получены данные от Telegram: {data}")
+
+        if "message" in data:
+            chat_id = data["message"]["chat"]["id"]
+
+            # Проверка на текстовое сообщение
+            if "text" in data["message"]:
+                user_message = data["message"]["text"]
+                await send_typing_action(chat_id)  # Отправка статуса "печатает"
+                if user_message.lower() in ["привет", "здравствуйте", "начать"]:
+                    welcome_message = (
+                        "Привет! Отправь текстовое сообщение, голосовое или фото, чтобы я помог создать уникальный контент."
+                    )
+                    await send_message(chat_id, welcome_message)
+                else:
+                    response = await generate_openai_response(user_message)
+                    await send_message(chat_id, response)
+
+            # Проверка на голосовое сообщение
+            elif "voice" in data["message"]:
+                file_id = data["message"]["voice"]["file_id"]
+                file_path = await get_telegram_file_path(file_id)
+                ogg_file_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
+                text_from_audio = await transcribe_audio(ogg_file_url)
+                await send_typing_action(chat_id)  # Отправка статуса "печатает"
+                response = await generate_openai_response(text_from_audio)
+                await send_message(chat_id, response)
+
+            # Проверка на фото
+            elif "photo" in data["message"]:
+                file_id = data["message"]["photo"][-1]["file_id"]
+                file_path = await get_telegram_file_path(file_id)
+                photo_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
+                text_from_image = await extract_text_from_image(photo_url)
+                if text_from_image:
+                    response = f"Распознанный текст с изображения:\n{text_from_image}"
+                else:
+                    response = "Не удалось распознать текст на изображении."
+                await send_message(chat_id, response)
+
+        return web.json_response({"status": "ok"})
+    except Exception as e:
+        print(f"Ошибка обработки вебхука: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+
+async def send_message(chat_id, text):
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {"chat_id": chat_id, "text": text}
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload) as response:
+                result = await response.json()
+                print(f"Ответ Telegram API: {result}")
+    except Exception as e:
+        print(f"Ошибка при отправке сообщения: {e}")
+
+async def send_typing_action(chat_id):
+    """Отправка статуса 'печатает'."""
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendChatAction"
+        payload = {"chat_id": chat_id, "action": "typing"}
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload) as response:
+                print(f"Отправлен статус 'печатает': {response.status}")
+    except Exception as e:
+        print(f"Ошибка при отправке статуса 'печатает': {e}")
+
+async def get_telegram_file_path(file_id):
+    """Получение пути файла по file_id."""
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile"
+        payload = {"file_id": file_id}
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=payload) as response:
+                result = await response.json()
+                return result["result"]["file_path"]
+    except Exception as e:
+        print(f"Ошибка получения пути файла: {e}")
+        return None
+
+async def transcribe_audio(ogg_url):
+    """Транскрипция голосового сообщения."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(ogg_url) as response:
+                ogg_data = await response.read()
+
+        # Конвертация OGG в WAV
+        with open("audio.ogg", "wb") as ogg_file:
+            ogg_file.write(ogg_data)
+        audio = AudioSegment.from_file("audio.ogg", format="ogg")
+        audio.export("audio.wav", format="wav")
+
+        # Отправка в OpenAI для транскрипции
+        with open("audio.wav", "rb") as audio_file:
+            transcript = openai.Audio.transcribe("whisper-1", audio_file)
+        return transcript["text"]
+    except Exception as e:
+        print(f"Ошибка при транскрипции: {e}")
+        return "Не удалось обработать голосовое сообщение."
+
+async def extract_text_from_image(image_url):
+    """Извлечение текста с изображения."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(image_url) as response:
+                image_data = await response.read()
+
+        image_path = "image.jpg"
+        with open(image_path, "wb") as img_file:
+            img_file.write(image_data)
+
+        print(f"Изображение сохранено по пути: {image_path}")
+
+        image = Image.open(image_path)
+        text = pytesseract.image_to_string(image, lang='rus+eng')
+        print(f"Распознанный текст: {text}")
+
+        os.remove(image_path)
+        return text.strip()
+    except Exception as e:
+        print(f"Ошибка обработки изображения: {e}")
+        return None
+
+async def generate_openai_response(user_message):
+    """Генерация ответа через OpenAI."""
+    try:
+        response = await openai.ChatCompletion.acreate(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": PROMPT},
-                {"role": "user", "content": user_message}
+                {"role": "user", "content": user_message},
             ],
+            temperature=1,
             max_tokens=1500,
-            temperature=1
         )
-        reply = response['choices'][0]['message']['content'].strip()
-        await update.message.reply_text(reply)
+        return response['choices'][0]['message']['content']
     except Exception as e:
-        logging.error(f"Ошибка обработки сообщения: {e}")
-        await update.message.reply_text("Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте позже.")
+        print(f"Ошибка при обращении к OpenAI: {e}")
+        return "Произошла ошибка при генерации ответа."
 
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    photo_file = await update.message.photo[-1].get_file()
-    image_path = "image.jpg"
-    await photo_file.download_to_drive(image_path)
+# Роуты приложения
+app.router.add_get('/', handle_home)
+app.router.add_post('/webhook', handle_webhook)
 
-    logging.info(f"Изображение сохранено по пути: {image_path}")
-
-    try:
-        extracted_text = pytesseract.image_to_string(Image.open(image_path), lang='rus+eng')
-        if extracted_text.strip():
-            logging.info(f"Распознанный текст: {extracted_text}")
-
-            # Установить статус "печатает"
-            await context.bot.send_chat_action(chat_id=update.message.chat.id, action=constants.ChatAction.TYPING)
-
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": PROMPT},
-                    {"role": "user", "content": f"Текст с изображения: {extracted_text}"}
-                ],
-                max_tokens=1500,
-                temperature=1
-            )
-            reply = response['choices'][0]['message']['content'].strip()
-            await update.message.reply_text(reply)
-        else:
-            raise ValueError("Текст не распознан.")
-    except Exception as e:
-        logging.error(f"Ошибка обработки изображения: {e}")
-        await update.message.reply_text("Не удалось распознать текст на изображении.")
-
-async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    voice_file = await update.message.voice.get_file()
-    audio_path = "audio.ogg"
-    wav_path = "audio.wav"
-    await voice_file.download_to_drive(audio_path)
-
-    logging.info(f"Голосовое сообщение сохранено по пути: {audio_path}")
-
-    try:
-        audio = AudioSegment.from_ogg(audio_path)
-        audio.export(wav_path, format="wav")
-
-        transcript_response = openai.Audio.transcribe(
-            model="whisper-1",
-            file=open(wav_path, "rb")
-        )
-
-        transcript = transcript_response['text']
-        logging.info(f"Распознанный текст из голосового сообщения: {transcript}")
-
-        # Установить статус "печатает"
-        await context.bot.send_chat_action(chat_id=update.message.chat.id, action=constants.ChatAction.TYPING)
-
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": PROMPT},
-                {"role": "user", "content": transcript}
-            ],
-            max_tokens=1500,
-            temperature=1
-        )
-        reply = response['choices'][0]['message']['content'].strip()
-        await update.message.reply_text(reply)
-    except Exception as e:
-        logging.error(f"Ошибка обработки голосового сообщения: {e}")
-        await update.message.reply_text("Не удалось обработать голосовое сообщение. Попробуйте позже.")
-
-if __name__ == '__main__':
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    application.add_handler(MessageHandler(filters.VOICE, handle_voice))
-
-    logging.info("Установка вебхука")
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.getenv("PORT", "8080")),
-        webhook_url=WEBHOOK_URL
-    )
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8080))
+    web.run_app(app, host="0.0.0.0", port=port)
