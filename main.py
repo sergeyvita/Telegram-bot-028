@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 import openai
 import aiohttp
 from pydub import AudioSegment
+from PIL import Image
+import pytesseract
 
 # Загрузка переменных окружения из .env файла
 load_dotenv()
@@ -27,6 +29,9 @@ PROMPT = (
     "Заканчивай посты тематическими хэштегами."
 )
 
+# Указываем путь к tesseract.exe, если используется Windows
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
 # Создание приложения Aiohttp
 app = web.Application()
 
@@ -47,13 +52,13 @@ async def handle_webhook(request):
                 await send_typing_action(chat_id)  # Отправка статуса "печатает"
                 if user_message.lower() in ["привет", "здравствуйте", "начать"]:
                     welcome_message = (
-                        "Привет! Отправь текстовое сообщение или голосовое, чтобы я помог создать уникальный контент."
+                        "Привет! Отправь текстовое сообщение, голосовое или фото, чтобы я помог создать уникальный контент."
                     )
                     await send_message(chat_id, welcome_message)
                 else:
                     response = await generate_openai_response(user_message)
                     await send_message(chat_id, response)
-            
+
             # Проверка на голосовое сообщение
             elif "voice" in data["message"]:
                 file_id = data["message"]["voice"]["file_id"]
@@ -62,6 +67,18 @@ async def handle_webhook(request):
                 text_from_audio = await transcribe_audio(ogg_file_url)
                 await send_typing_action(chat_id)  # Отправка статуса "печатает"
                 response = await generate_openai_response(text_from_audio)
+                await send_message(chat_id, response)
+
+            # Проверка на фото
+            elif "photo" in data["message"]:
+                file_id = data["message"]["photo"][-1]["file_id"]
+                file_path = await get_telegram_file_path(file_id)
+                photo_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
+                text_from_image = await extract_text_from_image(photo_url)
+                if text_from_image:
+                    response = f"Распознанный текст с изображения:\n{text_from_image}"
+                else:
+                    response = "Не удалось распознать текст на изображении."
                 await send_message(chat_id, response)
 
         return web.json_response({"status": "ok"})
@@ -124,6 +141,24 @@ async def transcribe_audio(ogg_url):
     except Exception as e:
         print(f"Ошибка при транскрипции: {e}")
         return "Не удалось обработать голосовое сообщение."
+
+async def extract_text_from_image(image_url):
+    """Извлечение текста с изображения."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(image_url) as response:
+                image_data = await response.read()
+
+        with open("image.jpg", "wb") as img_file:
+            img_file.write(image_data)
+
+        image = Image.open("image.jpg")
+        text = pytesseract.image_to_string(image, lang='rus+eng')
+        os.remove("image.jpg")
+        return text.strip()
+    except Exception as e:
+        print(f"Ошибка обработки изображения: {e}")
+        return None
 
 async def generate_openai_response(user_message):
     """Генерация ответа через OpenAI."""
