@@ -1,42 +1,81 @@
 import os
-import asyncio
-from aiohttp import web
-from dotenv import load_dotenv
 import openai
+import requests
 import aiohttp
-from pydub import AudioSegment
+from aiohttp import web
 from PIL import Image
-import pytesseract
+from pydub import AudioSegment
 
-# Загрузка переменных окружения из .env файла
-load_dotenv()
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-# Переменные окружения
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-
-# Установка API-ключа OpenAI
 openai.api_key = OPENAI_API_KEY
 
-# PROMT для OpenAI
 PROMPT = (
-    "Ты создаешь продающие посты для Telegram, посвященные продаже квартир в новостройках города Краснодара и Краснодарского края от агентства недвижимости 'Ассоциация застройщиков'. "
-    "Каждый пост должен быть ярким, динамичным, структурированным, с акцентом на ключевые моменты. "
-    "Используй эмодзи для привлечения внимания, выделяй важное жирным шрифтом. "
-    "Если включаешь расчеты (например, стоимость квартиры, процентная ставка по ипотеке, ежемесячный платеж), выводи данные в формате, где каждая цифра находится на отдельной строке для удобства. "
-    "Если речь идет об ипотеке, квартирах в новостройках или жилых комплексах, в самом конце поста добавляй призыв связаться с Ассоциацией застройщиков по телефону 8-800-550-23-93. "
-    "Заканчивай посты тематическими хэштегами."
+    "Этот GPT выступает в роли профессионального создателя контента для Телеграм-канала Ассоциации застройщиков. "
+    "Он создает максимально продающие посты на темы недвижимости, строительства, законодательства, инвестиций и связанных отраслей. "
+    "Контент ориентирован на привлечение внимания, удержание аудитории и стимулирование действий (например, обращения за консультацией или покупки). "
+    "GPT учитывает деловой, но не формальный тон и стремится быть доступным, информативным и вовлекающим. "
+    "Посты красиво оформляются с использованием эмодзи в стиле 'энергичный и современный', добавляя динамичности и вовлеченности. "
+    "Например: 🏗️ для темы строительства, 🌟 для выделения преимуществ, 📲 для призывов к действию. "
+    "Все посты структурированные и содержат четкие призывы к действию, информацию о контактах и гиперссылки. "
+    "Если по запросу необходимо показать расчеты по квартирам, то жирным выделяются комнатность квартиры, площадь, стоимость и ежемесячный платеж по ипотечному кредиту. "
+    "Эти данные всегда подаются структурировано и логично. "
+    "GPT не фантазирует и создает контент исключительно на основе полученной информации. "
+    "Если информации не хватает, он уточняет необходимые данные у отправителя. "
+    "В конце каждого поста перед хэштегами указывается название компании 'Ассоциация застройщиков', номер телефона 8-800-550-23-93. "
+    "В конце хэштеги на тему поста."
 )
 
-# Указываем путь к tesseract.exe, если используется Windows
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+async def get_telegram_file_path(file_id):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            data = await resp.json()
+            return data["result"]["file_path"]
 
-# Создание приложения Aiohttp
-app = web.Application()
+async def send_message(chat_id, text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    async with aiohttp.ClientSession() as session:
+        await session.post(url, json=payload)
 
-async def handle_home(request):
-    return web.Response(text="Сервис работает!")
+async def send_typing_action(chat_id):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendChatAction"
+    payload = {"chat_id": chat_id, "action": "typing"}
+    async with aiohttp.ClientSession() as session:
+        await session.post(url, json=payload)
+
+async def transcribe_audio(ogg_file_url):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(ogg_file_url) as resp:
+            content = await resp.read()
+            with open("temp_audio.ogg", "wb") as f:
+                f.write(content)
+
+    try:
+        audio = AudioSegment.from_file("temp_audio.ogg", format="ogg")
+        audio.export("temp_audio.wav", format="wav")
+        with open("temp_audio.wav", "rb") as f:
+            transcript = openai.Audio.transcribe("whisper-1", f)
+        return transcript["text"]
+    except Exception as e:
+        print(f"Ошибка транскрипции аудио: {e}")
+        return None
+
+async def generate_openai_response(prompt):
+    try:
+        response = openai.Completion.create(
+            engine="gpt-4",
+            prompt=prompt,
+            max_tokens=1500,
+            temperature=1,
+        )
+        return response["choices"][0]["text"].strip()
+    except Exception as e:
+        print(f"Ошибка OpenAI: {e}")
+        return "Произошла ошибка при обработке запроса."
 
 async def handle_webhook(request):
     try:
@@ -45,19 +84,23 @@ async def handle_webhook(request):
 
         if "message" in data:
             chat_id = data["message"]["chat"]["id"]
+            username = data["message"]["from"]["username"]
 
             # Проверка на текстовое сообщение
             if "text" in data["message"]:
                 user_message = data["message"]["text"]
-                await send_typing_action(chat_id)  # Отправка статуса "печатает"
-                if user_message.lower() in ["привет", "здравствуйте", "начать"]:
-                    welcome_message = (
-                        "Привет! Отправь текстовое сообщение, голосовое или фото, чтобы я помог создать уникальный контент."
-                    )
-                    await send_message(chat_id, welcome_message)
-                else:
-                    response = await generate_openai_response(user_message)
-                    await send_message(chat_id, response)
+                await send_typing_action(chat_id)
+
+                # Добавление условий для разных пользователей
+                if username == "di_agent01":
+                    user_message += "\n\nНаписать в WhatsApp: wa.me/79281497703"
+                elif username == "Alinalyusaya":
+                    user_message += "\n\nНаписать в WhatsApp: wa.me/79281237003"
+                elif username == "ElenaZelenskaya1":
+                    user_message += "\n\nНаписать в WhatsApp: wa.me/79384242393"
+
+                response = await generate_openai_response(PROMPT + "\n\n" + user_message)
+                await send_message(chat_id, response)
 
             # Проверка на голосовое сообщение
             elif "voice" in data["message"]:
@@ -65,20 +108,8 @@ async def handle_webhook(request):
                 file_path = await get_telegram_file_path(file_id)
                 ogg_file_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
                 text_from_audio = await transcribe_audio(ogg_file_url)
-                await send_typing_action(chat_id)  # Отправка статуса "печатает"
-                response = await generate_openai_response(text_from_audio)
-                await send_message(chat_id, response)
-
-            # Проверка на фото
-            elif "photo" in data["message"]:
-                file_id = data["message"]["photo"][-1]["file_id"]
-                file_path = await get_telegram_file_path(file_id)
-                photo_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
-                text_from_image = await extract_text_from_image(photo_url)
-                if text_from_image:
-                    response = f"Распознанный текст с изображения:\n{text_from_image}"
-                else:
-                    response = "Не удалось распознать текст на изображении."
+                await send_typing_action(chat_id)
+                response = await generate_openai_response(PROMPT + "\n\n" + text_from_audio)
                 await send_message(chat_id, response)
 
         return web.json_response({"status": "ok"})
@@ -86,106 +117,15 @@ async def handle_webhook(request):
         print(f"Ошибка обработки вебхука: {e}")
         return web.json_response({"error": str(e)}, status=500)
 
-async def send_message(chat_id, text):
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": chat_id, "text": text}
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload) as response:
-                result = await response.json()
-                print(f"Ответ Telegram API: {result}")
-    except Exception as e:
-        print(f"Ошибка при отправке сообщения: {e}")
+async def setup_webhook():
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook"
+    payload = {"url": WEBHOOK_URL}
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload) as resp:
+            print(f"Установлен вебхук: {await resp.text()}")
 
-async def send_typing_action(chat_id):
-    """Отправка статуса 'печатает'."""
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendChatAction"
-        payload = {"chat_id": chat_id, "action": "typing"}
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload) as response:
-                print(f"Отправлен статус 'печатает': {response.status}")
-    except Exception as e:
-        print(f"Ошибка при отправке статуса 'печатает': {e}")
-
-async def get_telegram_file_path(file_id):
-    """Получение пути файла по file_id."""
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile"
-        payload = {"file_id": file_id}
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, params=payload) as response:
-                result = await response.json()
-                return result["result"]["file_path"]
-    except Exception as e:
-        print(f"Ошибка получения пути файла: {e}")
-        return None
-
-async def transcribe_audio(ogg_url):
-    """Транскрипция голосового сообщения."""
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(ogg_url) as response:
-                ogg_data = await response.read()
-
-        # Конвертация OGG в WAV
-        with open("audio.ogg", "wb") as ogg_file:
-            ogg_file.write(ogg_data)
-        audio = AudioSegment.from_file("audio.ogg", format="ogg")
-        audio.export("audio.wav", format="wav")
-
-        # Отправка в OpenAI для транскрипции
-        with open("audio.wav", "rb") as audio_file:
-            transcript = openai.Audio.transcribe("whisper-1", audio_file)
-        return transcript["text"]
-    except Exception as e:
-        print(f"Ошибка при транскрипции: {e}")
-        return "Не удалось обработать голосовое сообщение."
-
-async def extract_text_from_image(image_url):
-    """Извлечение текста с изображения."""
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(image_url) as response:
-                image_data = await response.read()
-
-        image_path = "image.jpg"
-        with open(image_path, "wb") as img_file:
-            img_file.write(image_data)
-
-        print(f"Изображение сохранено по пути: {image_path}")
-
-        image = Image.open(image_path)
-        text = pytesseract.image_to_string(image, lang='rus+eng')
-        print(f"Распознанный текст: {text}")
-
-        os.remove(image_path)
-        return text.strip()
-    except Exception as e:
-        print(f"Ошибка обработки изображения: {e}")
-        return None
-
-async def generate_openai_response(user_message):
-    """Генерация ответа через OpenAI."""
-    try:
-        response = await openai.ChatCompletion.acreate(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": PROMPT},
-                {"role": "user", "content": user_message},
-            ],
-            temperature=1,
-            max_tokens=1500,
-        )
-        return response['choices'][0]['message']['content']
-    except Exception as e:
-        print(f"Ошибка при обращении к OpenAI: {e}")
-        return "Произошла ошибка при генерации ответа."
-
-# Роуты приложения
-app.router.add_get('/', handle_home)
-app.router.add_post('/webhook', handle_webhook)
+app = web.Application()
+app.router.add_post("/webhook", handle_webhook)
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8080))
-    web.run_app(app, host="0.0.0.0", port=port)
+    web.run_app(app, port=8080)
