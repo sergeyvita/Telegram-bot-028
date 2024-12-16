@@ -7,6 +7,7 @@ import pytesseract
 from PIL import Image
 from pydub import AudioSegment
 from dotenv import load_dotenv
+import subprocess  # Для проверки версии Tesseract
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -28,6 +29,13 @@ logging.basicConfig(
         logging.FileHandler("bot_errors.log", mode='a', encoding='utf-8')  # Запись логов в файл
     ]
 )
+
+# Логирование версии Tesseract
+try:
+    tesseract_version = subprocess.run(["tesseract", "--version"], capture_output=True, text=True)
+    logging.info(f"Tesseract version: {tesseract_version.stdout.strip()}")
+except Exception as e:
+    logging.error(f"Ошибка получения версии Tesseract: {e}")
 
 PROMPT = (
     "Этот GPT выступает в роли профессионального создателя контента для Телеграм-канала Ассоциации застройщиков. "

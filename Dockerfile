@@ -1,7 +1,7 @@
-# Используем легковесный Python-образ
+# Использование легковесного Python-образа
 FROM python:3.11-slim
 
-# Установка системных зависимостей, включая Tesseract
+# Установка Tesseract OCR и необходимых библиотек
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     libtesseract-dev \
@@ -12,10 +12,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копирование исходного кода приложения
+# Копирование файлов проекта
 COPY . .
 
-# Установка переменных окружения для Tesseract
+# Установка переменных окружения
 ENV TESSERACT_CMD=/usr/bin/tesseract
 
 # Запуск приложения
