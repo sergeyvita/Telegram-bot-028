@@ -16,12 +16,12 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 
-# Установка API-ключа OpenAI :)
+# Установка API-ключа OpenAI
 openai.api_key = OPENAI_API_KEY
 
 # PROMT для OpenAI
 PROMPT = (
-    "Ты создаешь продающие посты для Telegram, посвященные продаже квартир в новостройках города Краснодара от агентства недвижимости 'Ассоциация застройщиков'. "
+    "Ты создаешь продающие посты для Telegram, посвященные продаже квартир в новостройках города Краснодара и Краснодарского края от агентства недвижимости 'Ассоциация застройщиков'. "
     "Каждый пост должен быть ярким, динамичным, структурированным, с акцентом на ключевые моменты. "
     "Используй эмодзи для привлечения внимания, выделяй важное жирным шрифтом. "
     "Если включаешь расчеты (например, стоимость квартиры, процентная ставка по ипотеке, ежемесячный платеж), выводи данные в формате, где каждая цифра находится на отдельной строке для удобства. "
@@ -149,12 +149,17 @@ async def extract_text_from_image(image_url):
             async with session.get(image_url) as response:
                 image_data = await response.read()
 
-        with open("image.jpg", "wb") as img_file:
+        image_path = "image.jpg"
+        with open(image_path, "wb") as img_file:
             img_file.write(image_data)
 
-        image = Image.open("image.jpg")
+        print(f"Изображение сохранено по пути: {image_path}")
+
+        image = Image.open(image_path)
         text = pytesseract.image_to_string(image, lang='rus+eng')
-        os.remove("image.jpg")
+        print(f"Распознанный текст: {text}")
+
+        os.remove(image_path)
         return text.strip()
     except Exception as e:
         print(f"Ошибка обработки изображения: {e}")
