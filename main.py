@@ -1,15 +1,14 @@
 import os
 import logging
-from telegram import Update, BotAction
+from telegram import Update, ChatAction
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import openai
 import pytesseract
 from PIL import Image
 from pydub import AudioSegment
-from pydub.playback import play
 from dotenv import load_dotenv
 
-# Загрузка переменных окружения :)
+# Загрузка переменных окружения
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -18,7 +17,6 @@ TESSERACT_CMD = os.getenv("TESSERACT_CMD")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
-
 openai.api_key = OPENAI_API_KEY
 
 logging.basicConfig(
@@ -47,7 +45,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat.id
 
     # Установить статус "печатает"
-    await context.bot.send_chat_action(chat_id=chat_id, action=BotAction.TYPING)
+    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
 
     try:
         response = openai.ChatCompletion.create(
@@ -78,7 +76,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logging.info(f"Распознанный текст: {extracted_text}")
 
             # Установить статус "печатает"
-            await context.bot.send_chat_action(chat_id=update.message.chat.id, action=BotAction.TYPING)
+            await context.bot.send_chat_action(chat_id=update.message.chat.id, action=ChatAction.TYPING)
 
             response = openai.ChatCompletion.create(
                 model="gpt-4",
@@ -86,8 +84,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     {"role": "system", "content": PROMPT},
                     {"role": "user", "content": f"Текст с изображения: {extracted_text}"}
                 ],
-                max_tokens=500,
-                temperature=0.7
+                max_tokens=1500,
+                temperature=1
             )
             reply = response['choices'][0]['message']['content'].strip()
             await update.message.reply_text(reply)
@@ -120,7 +118,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.info(f"Распознанный текст из голосового сообщения: {transcript}")
 
         # Установить статус "печатает"
-        await context.bot.send_chat_action(chat_id=update.message.chat.id, action=BotAction.TYPING)
+        await context.bot.send_chat_action(chat_id=update.message.chat.id, action=ChatAction.TYPING)
 
         response = openai.ChatCompletion.create(
             model="gpt-4",
@@ -128,8 +126,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 {"role": "system", "content": PROMPT},
                 {"role": "user", "content": transcript}
             ],
-            max_tokens=1500,
-            temperature=1
+            max_tokens=500,
+            temperature=0.7
         )
         reply = response['choices'][0]['message']['content'].strip()
         await update.message.reply_text(reply)
@@ -145,10 +143,10 @@ if __name__ == '__main__':
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
-    # Запуск через вебхук
+    # Установка вебхука
+    logging.info("Установка вебхука")
     application.run_webhook(
         listen="0.0.0.0",
-        port=int(os.getenv("PORT", 8080)),
-        url_path="",
+        port=int(os.getenv("PORT", "8080")),
         webhook_url=WEBHOOK_URL
     )
