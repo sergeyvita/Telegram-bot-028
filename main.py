@@ -18,13 +18,13 @@ WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 # Установка API-ключа OpenAI
 openai.api_key = OPENAI_API_KEY
 
-# PROMT для OpenAI
+# PROMPT для OpenAI
 PROMPT = (
     "Этот GPT выступает в роли профессионального создателя контента для Телеграм-канала Ассоциации застройщиков. "
     "Он создает максимально продающие посты на темы недвижимости, строительства, законодательства, инвестиций и связанных отраслей. "
     "Контент ориентирован на привлечение внимания, удержание аудитории и стимулирование действий (например, обращения за консультацией или покупки). "
     "Посты красиво оформляются с использованием эмодзи в стиле \"энергичный и современный\", добавляя динамичности и вовлеченности. "
-    "Например: \ud83c\udfe1 для темы недвижимости, \ud83d\ude80 для роста, \ud83d\udce2 для новостей. "
+    "Например: 🏠 для темы недвижимости, 🚀 для роста, 📢 для новостей. "
     "Все посты структурированные и содержат четкие призывы к действию, информацию о контактах и гиперссылки. "
     "В конце каждого поста перед хэштегами указывается название компании \"Ассоциация застройщиков\", номер телефона 8-800-550-23-93. "
     "В конце хэштеги на тему поста."
@@ -67,6 +67,7 @@ async def handle_webhook(request):
                 typing_task = asyncio.create_task(send_typing_action_while_processing(chat_id, stop_event))
 
                 try:
+                    # Условная логика пользователей
                     if username == "di_agent01":
                         response = await generate_openai_response(user_message)
                         response += "\nНаписать в WhatsApp: wa.me/79281497703"
@@ -76,6 +77,12 @@ async def handle_webhook(request):
                     elif username == "ElenaZelenskaya1":
                         response = await generate_openai_response(user_message)
                         response += "\nНаписать в WhatsApp: wa.me/79384242393"
+                    elif username == "uliya_az":
+                        response = await generate_openai_response(user_message)
+                        response += "\nНаписать в WhatsApp: wa.me/79001883558"
+                    elif username == "alexey_turskiy":
+                        response = await generate_openai_response(user_message)
+                        response += "\nНаписать в WhatsApp: wa.me/9281419636"
                     else:
                         response = await generate_openai_response(user_message)
 
@@ -144,20 +151,13 @@ async def send_message(chat_id, text):
         print(f"Ошибка при отправке сообщения: {e}")
 
 async def send_typing_action_while_processing(chat_id, stop_event):
-    """
-    Отправляет статус "печатает" в чат, пока не будет установлен stop_event.
-    """
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendChatAction"
-        payload = {"chat_id": chat_id, "action": "typing"}  # Отправка статуса "печатает"
+        payload = {"chat_id": chat_id, "action": "typing"}
         async with aiohttp.ClientSession() as session:
             while not stop_event.is_set():
                 async with session.post(url, json=payload) as response:
-                    if response.status == 200:
-                        print(f"Статус 'печатает' успешно отправлен.")
-                    else:
-                        print(f"Ошибка при отправке статуса 'печатает': {response.status}")
-                await asyncio.sleep(5)  # Отправка статуса каждые 5 секунд
+                    await asyncio.sleep(5)
     except Exception as e:
         print(f"Ошибка в send_typing_action_while_processing: {e}")
 
