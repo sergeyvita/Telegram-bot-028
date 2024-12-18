@@ -164,7 +164,7 @@ async def send_typing_action_while_processing(chat_id, stop_event):
 async def generate_openai_response(user_message):
     try:
         response = await openai.ChatCompletion.acreate(
-            model="gpt-3.5-turbo",
+            model="gpt-4",
             messages=[
                 {"role": "system", "content": PROMPT},
                 {"role": "user", "content": user_message},
