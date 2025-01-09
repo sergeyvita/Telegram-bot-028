@@ -13,14 +13,11 @@ load_dotenv()
 # Переменные окружения
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+CHAT_ID = os.getenv('CHAT_ID')  # Идентификатор чата на OpenAI
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 
 # Установка API-ключа OpenAI
 openai.api_key = OPENAI_API_KEY
-
-# PROMPT для OpenAI
-PROMPT = (
-)
 
 # Создание приложения Aiohttp
 app = web.Application()
@@ -53,34 +50,11 @@ async def handle_webhook(request):
 
             elif "text" in data["message"]:
                 user_message = data["message"]["text"]
-                username = data["message"]["from"].get("username", "")
-
                 stop_event = Event()
                 typing_task = asyncio.create_task(send_typing_action_while_processing(chat_id, stop_event))
 
                 try:
-                    # Условная логика пользователей
-                    if username == "di_agent01":
-                        response = await generate_openai_response(user_message)
-                        response += "\nНаписать в WhatsApp: wa.me/79281497703"
-                    elif username == "Alinalyusaya":
-                        response = await generate_openai_response(user_message)
-                        response += "\nНаписать в WhatsApp: wa.me/79281237003"
-                    elif username == "ElenaZelenskaya1":
-                        response = await generate_openai_response(user_message)
-                        response += "\nНаписать в WhatsApp: wa.me/79384242393"
-                    elif username == "shaglin":
-                        response = await generate_openai_response(user_message)
-                        response += "\nНаписать в WhatsApp: wa.me/79286226009"
-                    elif username == "uliya_az":
-                        response = await generate_openai_response(user_message)
-                        response += "\nНаписать в WhatsApp: wa.me/79001883558"
-                    elif username == "alexey_turskiy":
-                        response = await generate_openai_response(user_message)
-                        response += "\nНаписать в WhatsApp: wa.me/9281419636"
-                    else:
-                        response = await generate_openai_response(user_message)
-
+                    response = await generate_openai_response(user_message)
                     await send_message(chat_id, response)
                 finally:
                     stop_event.set()
@@ -158,11 +132,11 @@ async def send_typing_action_while_processing(chat_id, stop_event):
 
 async def generate_openai_response(user_message):
     try:
+        # Запрос к OpenAI для существующего чата
         response = await openai.ChatCompletion.acreate(
             model="gpt-4",
-            chat_id="proj_rK93asAyoIF5TRoBetFyTv16",  # ID вашего чата
             messages=[
-                {"role": "system", "content": PROMPT},
+                {"role": "system", "content": f"Chat ID: {CHAT_ID}"},  # Уточнение для логирования
                 {"role": "user", "content": user_message},
             ],
             temperature=1,
