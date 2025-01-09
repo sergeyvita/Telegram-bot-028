@@ -135,9 +135,9 @@ async def generate_openai_response(user_message):
         # Запрос к OpenAI для существующего чата
         response = await openai.ChatCompletion.acreate(
             model="gpt-4",
+            chat_id=CHAT_ID,  # Указываем существующий чат через переменную окружения
             messages=[
-                {"role": "system", "content": f"Chat ID: {CHAT_ID}"},  # Уточнение для логирования
-                {"role": "user", "content": user_message},
+                {"role": "user", "content": user_message},  # Сообщение пользователя
             ],
             temperature=1,
             max_tokens=1500,
