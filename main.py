@@ -47,6 +47,7 @@ async def handle_webhook(request):
             chat_id = data["message"]["chat"]["id"]
 
             if "voice" in data["message"]:
+                # Обработка голосовых сообщений
                 file_id = data["message"]["voice"]["file_id"]
                 file_path = await get_file_path(file_id)
 
@@ -62,6 +63,7 @@ async def handle_webhook(request):
                     await send_message(chat_id, response)
 
             elif "text" in data["message"]:
+                # Обработка текстовых сообщений
                 user_message = data["message"]["text"]
                 username = data["message"]["from"].get("username", "")
 
@@ -69,10 +71,11 @@ async def handle_webhook(request):
                 typing_task = asyncio.create_task(send_typing_action_while_processing(chat_id, stop_event))
 
                 try:
-                    if "/create_post" in user_message:
+                    # Если сообщение связано с созданием поста
+                    if any(keyword in user_message.lower() for keyword in ["пост", "создать", "описание", "жк"]):
                         # Генерация текста поста
                         post_text = await generate_openai_response(user_message)
-                        
+
                         # Генерация изображения
                         image_prompt = f"A modern apartment complex, beautiful architecture: {user_message}"
                         image_url = await generate_image(image_prompt)
@@ -86,7 +89,7 @@ async def handle_webhook(request):
                         else:
                             await send_message(chat_id, "Не удалось сгенерировать изображение.")
                     else:
-                        # Условная логика пользователей
+                        # Условная логика для обычных текстовых сообщений
                         if username == "di_agent01":
                             response = await generate_openai_response(user_message)
                             response += "\nНаписать в WhatsApp: wa.me/79281497703"
