@@ -32,6 +32,23 @@ PROMPT = (
     "Тон текстов должен быть профессиональным, энергичным и современным. Для создания эмоционального отклика используются эмодзи и краткие восклицания. Каждое предложение структурировано для лёгкости восприятия."
 )
 
+# Сопоставление пользователей с контактной информацией
+USER_CONTACTS = {
+    "di_agent01": {"name": "Диана", "phone": "+79281497703"},
+    "Alinalyusaya": {"name": "Алина", "phone": "+79281237003"},
+    "ElenaZelenskaya1": {"name": "Елена", "phone": "+79384242393"},
+    "shaglin": {"name": "Сергей", "phone": "+79286226009"},
+    "uliya_az": {"name": "Юлия", "phone": "+79001883558"},
+    "alexey_turskiy": {"name": "Алексей", "phone": "+79281419636"},
+}
+
+# Функция для получения контактной информации
+def get_contact_info(username):
+    contact = USER_CONTACTS.get(username, None)
+    if contact:
+        return f"Контактное лицо: {contact['name']}.\nТелефон: {contact['phone']}."
+    return "Контакты не указаны."
+
 # Создание приложения Aiohttp
 app = web.Application()
 
@@ -76,6 +93,10 @@ async def handle_webhook(request):
                         # Генерация текста поста
                         post_text = await generate_openai_response(user_message)
 
+                        # Добавление контактной информации
+                        contact_info = get_contact_info(username)
+                        post_text += f"\n\n📞 {contact_info}\nОбщий телефон компании: **8-800-550-23-93**"
+
                         # Генерация изображения
                         image_prompt = f"A modern apartment complex, beautiful architecture: {user_message}"
                         image_url = await generate_image(image_prompt)
@@ -89,28 +110,8 @@ async def handle_webhook(request):
                         else:
                             await send_message(chat_id, "Не удалось сгенерировать изображение.")
                     else:
-                        # Условная логика для обычных текстовых сообщений
-                        if username == "di_agent01":
-                            response = await generate_openai_response(user_message)
-                            response += "\nНаписать в WhatsApp: wa.me/79281497703"
-                        elif username == "Alinalyusaya":
-                            response = await generate_openai_response(user_message)
-                            response += "\nНаписать в WhatsApp: wa.me/79281237003"
-                        elif username == "ElenaZelenskaya1":
-                            response = await generate_openai_response(user_message)
-                            response += "\nНаписать в WhatsApp: wa.me/79384242393"
-                        elif username == "shaglin":
-                            response = await generate_openai_response(user_message)
-                            response += "\nНаписать в WhatsApp: wa.me/79286226009"
-                        elif username == "uliya_az":
-                            response = await generate_openai_response(user_message)
-                            response += "\nНаписать в WhatsApp: wa.me/79001883558"
-                        elif username == "alexey_turskiy":
-                            response = await generate_openai_response(user_message)
-                            response += "\nНаписать в WhatsApp: wa.me/9281419636"
-                        else:
-                            response = await generate_openai_response(user_message)
-
+                        # Стандартное сообщение
+                        response = await generate_openai_response(user_message)
                         await send_message(chat_id, response)
                 finally:
                     stop_event.set()
@@ -215,9 +216,7 @@ async def generate_openai_response(user_message):
 
 async def generate_image(prompt):
     try:
-        # Сокращаем длину текста до 200 символов
         short_prompt = (prompt[:200] + '...') if len(prompt) > 200 else prompt
-        
         response = await openai.Image.acreate(
             prompt=short_prompt,
             n=1,
