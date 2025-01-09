@@ -215,8 +215,11 @@ async def generate_openai_response(user_message):
 
 async def generate_image(prompt):
     try:
+        # Сокращаем длину текста до 200 символов
+        short_prompt = (prompt[:200] + '...') if len(prompt) > 200 else prompt
+        
         response = await openai.Image.acreate(
-            prompt=prompt,
+            prompt=short_prompt,
             n=1,
             size="512x512"
         )
