@@ -18,7 +18,7 @@ WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 # Установка API-ключа OpenAI
 openai.api_key = OPENAI_API_KEY
 
-# PROMPT для OpenAI (полный)
+# PROMPT для OpenAI
 PROMPT = (
     "Этот GPT является профессиональным создателем контента для Telegram-канала агентства недвижимости Ассоциация застройщиков. "
     "Он пишет яркие, продающие и структурированные посты, ориентированные на привлечение внимания и информирование потенциальных покупателей недвижимости. "
@@ -74,7 +74,8 @@ async def handle_webhook(request):
                         post_text = await generate_openai_response(user_message)
                         
                         # Генерация изображения
-                        image_url = await generate_image(user_message)
+                        image_prompt = f"A modern apartment complex, beautiful architecture: {user_message}"
+                        image_url = await generate_image(image_prompt)
 
                         # Отправка текста поста
                         await send_message(chat_id, post_text)
@@ -211,7 +212,7 @@ async def generate_openai_response(user_message):
 
 async def generate_image(prompt):
     try:
-        response = await openai.Image.create(
+        response = await openai.Image.acreate(
             prompt=prompt,
             n=1,
             size="512x512"
